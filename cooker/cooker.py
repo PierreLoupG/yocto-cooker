@@ -449,8 +449,12 @@ class LogFormat(ABC):
 
 class LogLinkedFormat(LogFormat):
 
+    GITHUB_URL = "https://github.com"
+    GITLAB_URL = "https://gitlab.com"
+    GIT_HL_URL = (GITHUB_URL, GITLAB_URL)
+
     def format_rev_history(self, line, url):
-        if url.startswith(('https://github.com', 'https://gitlab.com')):
+        if url.startswith(self.GIT_HL_URL):
             index = line.find(' ')
             rev = line[0:index]
             text = line[index+1:]
@@ -458,7 +462,7 @@ class LogLinkedFormat(LogFormat):
         return super().format_rev_history(line, url)
 
     def format_rev_commit(self, data):
-        if data['url'].startswith(('https://github.com', 'https://gitlab.com')):
+        if data['url'].startswith(self.GIT_HL_URL):
             return '[{}]({}/commit/{})'.format(
                 data['rev'][0:7],
                 data['url'],
@@ -488,7 +492,7 @@ class LogTextFormat(LogFormat):
 class LogLinkedTextFormat(LogTextFormat, LogLinkedFormat):
 
     def format_rev_commits(self, data):
-        if data['to']['url'].startswith(('https://github.com', 'https://gitlab.com')):
+        if data['to']['url'].startswith(self.GIT_HL_URL):
             return '[{} .. {}]({}/compare/{}..{})'.format(
                 data['from']['rev'][0:7],
                 data['to']['rev'][0:7],
@@ -535,7 +539,7 @@ class LogMarkdownFormat(LogFormat):
 class LogLinkedMarkdownFormat(LogMarkdownFormat, LogLinkedFormat):
 
     def format_rev_commits(self, data):
-        if data['to']['url'].startswith(('https://github.com', 'https://gitlab.com')):
+        if data['to']['url'].startswith(self.GIT_HL_URL):
             return '[{} to {}]({}/compare/{}..{})'.format(
                 data['from']['rev'][0:7],
                 data['to']['rev'][0:7],
