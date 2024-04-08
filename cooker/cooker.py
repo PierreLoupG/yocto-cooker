@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import importlib.util
 from urllib.parse import urlparse
 import jsonschema
 import pkg_resources
@@ -346,8 +347,7 @@ def resolve_parents():
         debug('ancestors of build "{}": "{}"'
               .format(build.name(), [n.name() for n in build.ancestors_]))
 
-
-class PokyDistro:
+class BaseDistro:
 
     DISTRO_NAME = "poky"
     BASE_DIRECTORY = "poky"
@@ -356,22 +356,9 @@ class PokyDistro:
     DEFAULT_CONF_VERSION = "1"
     LAYER_CONF_NAME = "POKY_BBLAYERS_CONF_VERSION"
     LAYER_CONF_VERSION = "2"
-    PACKAGE_FORMAT = "package_rpm"
+    PACKAGE_CLASSES = "package_rpm"
     DEFAULT_BITBAKE_MAJOR_VERSION = 2
     BITBAKE_INIT_FILE = "bitbake/lib/bb/__init__.py"
-
-class AragoDistro:
-
-    DISTRO_NAME = "arago"
-    BASE_DIRECTORY = "openembedded-core"
-    BUILD_SCRIPT = "oe-init-build-env"
-    TEMPLATE_CONF = ("meta/conf",)
-    DEFAULT_CONF_VERSION = "1"
-    LAYER_CONF_NAME = "LCONF_VERSION"
-    LAYER_CONF_VERSION = "7"
-    PACKAGE_FORMAT = "package_ipk"
-    DEFAULT_BITBAKE_MAJOR_VERSION = 2
-    BITBAKE_INIT_FILE = "sources/bitbake/lib/__init__.py"
 
 
 class LogFormat(ABC):
@@ -556,19 +543,10 @@ class CookerCommands:
     def __init__(self, config, menu):
         self.config = config
         self.menu = menu
-        if menu is not None:
-            distros = {
-                'poky': PokyDistro,
-                'arago': AragoDistro,
-            }
-            name = menu.setdefault('base-distribution', 'poky')
-            try:
-                self.distro = distros[name.lower()]
-            except:
-                fatal_error('base-distribution {} is unknown, please add a `base-distribution.py` file next your menu.'.format(name))
 
-            # Update distro if custom distro is defined in menu
-            self.update_override_distro()
+        if menu is not None:
+            self.distro = BaseDistro
+            self.update_custom_distro()
 
     def init(self, menu_name, layer_dir=None, build_dir=None, dl_dir=None, sstate_dir=None):
         """ cooker-command 'init': (re)set the configuration file """
@@ -967,7 +945,7 @@ class CookerCommands:
         for line in build.local_conf():
             CookerCall.os.file_write(file, line)
         CookerCall.os.file_write(file, 'DISTRO ?= "{}"'.format(self.distro.DISTRO_NAME))
-        CookerCall.os.file_write(file, 'PACKAGE_CLASSES ?= "{}"'.format(self.distro.PACKAGE_FORMAT))
+        CookerCall.os.file_write(file, 'PACKAGE_CLASSES ??= "{}"'.format(self.distro.PACKAGE_CLASSES))
         CookerCall.os.file_write(file, 'BB_DISKMON_DIRS ??= "\\')
         CookerCall.os.file_write(file, '\tSTOPTASKS,${TMPDIR},1G,100K \\')
         CookerCall.os.file_write(file, '\tSTOPTASKS,${DL_DIR},1G,100K \\')
@@ -1132,14 +1110,20 @@ class CookerCommands:
             if not CookerCall.os.replace_process(shell, [shell, '-c', ". {} {}; {}".format(init_script, build_dir, shell)]):
                 fatal_error('could not run interactive shell for {} with {}'.format(build_names[0], shell))
 
-    def update_override_distro(self):
+    def update_custom_distro(self):
         """ update distro values from menu file if exists """
-        override_distro = self.menu.get("override_distro", {})
-        if override_distro:
-            self.distro.BASE_DIRECTORY = override_distro.get("base_directory", self.distro.BASE_DIRECTORY)
-            self.distro.BUILD_SCRIPT = override_distro.get("build_script", self.distro.BUILD_SCRIPT)
-            # Template conf must be a tuple
-            self.distro.TEMPLATE_CONF = (override_distro.get("template_conf", self.distro.TEMPLATE_CONF),)
+        distro = self.menu.get("base-distribution", {})
+        if distro:
+            self.distro.DISTRO_NAME = distro.get("distro-name", self.distro.DISTRO_NAME)
+            self.distro.BASE_DIRECTORY = distro.get("base-directory", self.distro.BASE_DIRECTORY)
+            self.distro.BUILD_SCRIPT = distro.get("build-script", self.distro.BUILD_SCRIPT)
+            self.distro.TEMPLATE_CONF = distro.get("template-conf", self.distro.TEMPLATE_CONF)
+            self.distro.DEFAULT_CONF_VERSION = distro.get("default-conf-version", self.distro.DEFAULT_CONF_VERSION)
+            self.distro.LAYER_CONF_NAME = distro.get("layer-conf-name", self.distro.LAYER_CONF_NAME)
+            self.distro.LAYER_CONF_VERSION = distro.get("layer-conf-version", self.distro.LAYER_CONF_VERSION)
+            self.distro.PACKAGE_CLASSES = distro.get("package-classes", self.distro.PACKAGE_CLASSES)
+            self.distro.DEFAULT_BITBAKE_MAJOR_VERSION = distro.get("default-bitbake-major-version", self.distro.DEFAULT_BITBAKE_MAJOR_VERSION)
+            self.distro.BITBAKE_INIT_FILE = distro.get("bitbake-init-file", self.distro.BITBAKE_INIT_FILE)
 
 
 class CookerCall:
