@@ -809,24 +809,37 @@ class CookerCommands:
         schema = pyjson5.loads(pkg_resources.resource_string(__name__, "cooker-menu-schema.json").decode('utf-8'))
         menu_from = self.load_and_validate_menu(menu_from_file, schema)
         menu_to = self.menu
+        new_build = False
 
-        if build_name not in menu_from['builds'] or build_name not in menu_to['builds']:
-            fatal_error('build `{}` does not exist in the menu file'.format(build_name))
+        if menu_to_file is not None:
+            menu_to = self.load_and_validate_menu(menu_to_file, schema)
+
+        if build_name not in menu_from['builds'] and build_name not in menu_to['builds']:
+            fatal_error('build `{}` does not exist'.format(build_name))
+
+        if build_name in menu_from['builds'] and build_name not in menu_to['builds']:
+            fatal_error('build `{}` no longer exists'.format(build_name))
+
+        if build_name not in menu_from['builds'] and build_name in menu_to['builds']:
+            new_build = True
 
         # Generates a BuildConfiguration class for the menu since the build layers
         # can change between menu version. If 'menu to' is ommitted, use the
         # current up-to-date BuildConfiguration class.
 
-        build_config_from = self.generate_build_config_from_menu(menu_from, build_name)
-        build_config_to = BuildConfiguration.ALL[build_name]
+        build_config_from = None
+        if not new_build:
+            build_config_from = self.generate_build_config_from_menu(menu_from, build_name)
 
+        build_config_to = BuildConfiguration.ALL[build_name]
         if menu_to_file is not None:
-            menu_to = self.load_and_validate_menu(menu_to_file, schema)
             build_config_to = self.generate_build_config_from_menu(menu_to, build_name)
 
         # Gets the sources used by the build from the list of layers.
 
-        sources_from = self.get_sources_from_build_layers(menu_from, build_config_from.layers())
+        sources_from = {}
+        if not new_build:
+            sources_from = self.get_sources_from_build_layers(menu_from, build_config_from.layers())
         sources_to = self.get_sources_from_build_layers(menu_to, build_config_to.layers())
 
         debug('sources `from` menu: {}'.format(sources_from))
